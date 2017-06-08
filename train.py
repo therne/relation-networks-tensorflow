@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import tensorflow as tf
-from model import DataInfo, HyperParams, RelationalNetwork
+from model import DataInfo, HyperParams, RelationNetwork
 
 flags = tf.app.flags
 
@@ -24,7 +24,7 @@ def main(_):
     with sv.managed_session(config=config) as sess:
         data_info = DataInfo()
         params = HyperParams()
-        model = RelationalNetwork(data_info, params)
+        model = RelationNetwork(data_info, params)
 
         placeholders = {
             model.image: None,

@@ -24,8 +24,8 @@ HyperParams = collections.namedtuple('HyperParams', [
 ])
 
 
-class RelationalNetwork:
-    """ Relational Network (https://arxiv.org/abs/1706.01427) """
+class RelationNetwork:
+    """ Relation Network (https://arxiv.org/abs/1706.01427) """
 
     def __init__(self, data_info: DataInfo, params: HyperParams, training=True):
         self.data_info = data_info
