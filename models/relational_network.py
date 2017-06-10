@@ -4,6 +4,7 @@ import tensorflow as tf
 from tensorflow.contrib.keras.python.keras.layers import Conv2D, Activation, Dense, Dropout, BatchNormalization
 from tensorflow.contrib.rnn import LSTMCell
 
+from models.base import BaseModel
 from utils import weight
 
 # Data information
@@ -19,24 +20,19 @@ HyperParams = collections.namedtuple('HyperParams', [
     'embed_dims',
     'g_units',
     'g_depths',
+    'f_units',
     'dropout_rate',
     'answer_vocab_size',
 ])
 
 
-class RelationNetwork:
+class RelationNetwork(BaseModel):
     """ Relation Network (https://arxiv.org/abs/1706.01427) """
 
-    def __init__(self, data_info: DataInfo, params: HyperParams, training=True):
-        self.data_info = data_info
-        self.params = params
-        self.training = training
-
-        # Inputs
-        image = tf.placeholder(tf.float32, shape=[None, data_info.img_size, data_info.img_size, 3], name='image')
-        question = tf.placeholder(tf.int32, shape=[None, data_info.max_sent_length], name='question')
-        answer = tf.placeholder(tf.int32, shape=[None], name='answer')
-        seq_len = tf.placeholder(tf.int32, shape=[None], name='question_len')
+    def infer(self, image, question, seq_len):
+        # image: [num_batch, 128, 128, 3]
+        # question: [num_batch, max_seq_len]
+        # seq_len: [num_batch]
 
         # Extract features
         feat_question = self.extract_question_feature(question, seq_len)
@@ -45,9 +41,9 @@ class RelationNetwork:
         # G network that tries to find every possible relations.
         g_outputs = []
         for i in range(25):
-            object_i = feature_maps[:, :, i/5, i%5]
+            object_i = tf.squeeze(feature_maps[:, i/5, i%5, :])  # [num_batch, units]
             for j in range(25):
-                object_j = feature_maps[:, :, j/5, j%5]
+                object_j = tf.squeeze(feature_maps[:, j/5, j%5, :])
 
                 # feed object pair and question feature into the G network.
                 g_input = tf.concat([object_i, object_j, feat_question], axis=1)
@@ -56,18 +52,7 @@ class RelationNetwork:
         # F network that combines all features.
         f_input = tf.add_n(g_outputs)
         logits = self.f_network(f_input)
-
-        # Calculate cross-entropy losses
-        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits, answer)
-        losses = tf.reduce_mean(cross_entropy)
-
-        self.image = image
-        self.question = question
-        self.answer = answer
-        self.seq_len = seq_len
-
-        self.losses = losses
-        self.logits = logits
+        return logits
 
     def extract_question_feature(self, question, seq_len):
         """ Extracts question feature using LSTM.
@@ -116,24 +101,26 @@ class RelationNetwork:
             x = Dense(units, activation='relu')(objects)
             x = Dense(units, activation='relu')(x)
             x = Dense(units, activation='relu')(x)
-            output = Dense(units, activation='relu')(x)
+            x = Dense(units, activation='relu')(x)
+            output = x
 
         return output
 
     def f_network(self, f_input):
         """ Combines all output features from G and provides result.
-        :param f_input: Added outputs from G with shape [batch_size, 256]
-        :return: logits with shape [batch_size, answer]
+        :param f_input: Added outputs from G with shape [batch_size, f_units]
+        :return: logits with shape [batch_size, answer_vocab_size]
         """
-        dropout_rate = self.params.dropout_rate
         vocab_size = self.data_info.answer_vocab_size
+        dropout_rate = self.params.dropout_rate
+        units = self.params.f_units
 
         with tf.variable_scope('F'):
-            x = Dense(256, activation='relu')(f_input)
+            x = Dense(units, activation='relu')(f_input)
             x = Dropout(dropout_rate)(x, training=self.training)
-            x = Dense(256, activation='relu')(x)
+            x = Dense(units, activation='relu')(x)
             x = Dropout(dropout_rate)(x, training=self.training)
-            output = Dense(vocab_size, activation='relu')(x)
+            x = Dense(vocab_size, activation='relu')(x)
+            output = x
 
         return output
-
